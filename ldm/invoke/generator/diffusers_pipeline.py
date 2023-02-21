@@ -32,6 +32,7 @@ from ..offloading import LazilyLoadedModelGroup, FullyLoadedModelGroup, ModelGro
 from ...models.diffusion.cross_attention_map_saving import AttentionMapSaver
 from ...modules.prompt_to_embeddings_converter import WeightedPromptFragmentsToEmbeddingsConverter
 
+from bigdl.nano.deps.openvino.pytorch.model import PytorchOpenVINOModel
 
 @dataclass
 class PipelineIntermediateState:
@@ -539,6 +540,7 @@ class StableDiffusionGeneratorPipeline(StableDiffusionPipeline):
 
         return step_output
 
+    
     def _unet_forward(self, latents, t, text_embeddings, cross_attention_kwargs: Optional[dict[str,Any]] = None):
         """predict the noise residual"""
         if is_inpainting_model(self.unet) and latents.size(1) == 4:
@@ -557,6 +559,9 @@ class StableDiffusionGeneratorPipeline(StableDiffusionPipeline):
             print("---------------------------------- cross_attention_kwargs not None l557")
         # return self.unet(latents, t, text_embeddings,
         #                  cross_attention_kwargs=cross_attention_kwargs).sample
+        
+        if isinstance(self.unet, PytorchOpenVINOModel):
+            t = t[0][None]
         noise_pred = self.unet(latents, t, text_embeddings)
         if hasattr(noise_pred, "sample"):
             noise_pred = noise_pred.sample
