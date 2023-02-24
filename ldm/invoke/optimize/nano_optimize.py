@@ -61,71 +61,9 @@ def optimize_unet(
             if fail_if_no_cache:
                 raise Exception("You have to download the model to nano_stable_diffusion folder")
                 
-            extra_args = {}
-            if precision == 'float32':
-                if accelerator == "jit":
-                    weights_prepack = False if low_memory else None
-                    extra_args["weights_prepack"] = weights_prepack
-                    extra_args["use_ipex"] = ipex
-                    extra_args["jit_strict"] = False
-                    extra_args["enable_onednn"] = False
-                    extra_args["channels_last"] = channels_last
-                elif accelerator is None:
-                    if ipex:
-                        extra_args["use_ipex"] = ipex
-                        extra_args["channels_last"] = channels_last
-                    else:
-                        raise ValueError("IPEX should be True if accelerator is None and precision is float32.")
-                elif accelerator == "openvino":
-                    extra_args["input_names"] = unet_input_names
-                    extra_args["output_names"] = unet_output_names
-                    # # Nano will deal with the GPU/VPU dynamic axes issue
-                    # extra_args["dynamic_axes"] = unet_dynamic_axes
-                    extra_args["dynamic_axes"] = False
-                    extra_args["device"] = device
-                else:
-                    raise ValueError(f"The accelerator can be one of `None`, `jit`, and `openvino` if the precision is float32, but got {accelerator}")
-                nano_unet = InferenceOptimizer.trace(unet,
-                                                    accelerator=accelerator,
-                                                    input_sample=input_sample,
-                                                    **extra_args)
-            else:
-                precision_map = {
-                    'bfloat16': 'bf16',
-                    'int8': 'int8',
-                    'float16': 'fp16'
-                }
-                precision_short = precision_map[precision]
-
-                # prepare input samples, calib dataloader and eval functions
-                if accelerator == "openvino":
-                    extra_args["device"] = device
-                    extra_args["input_names"] = unet_input_names
-                    extra_args["output_names"] = unet_output_names
-                    # Nano will deal with the GPU/VPU dynamic axes issue
-                    extra_args["dynamic_axes"] = unet_dynamic_axes
-
-                    if precision_short == "int8":
-                        # TODO: openvino int8 here
-                        raise ValueError("OpenVINO int8 quantization is not supported.")
-                elif accelerator == "onnxruntime":
-                    raise ValueError(f"Onnxruntime {precision_short} quantization is not supported.")
-                else:
-                    # PyTorch bf16
-                    if precision_short == "bf16":
-                        # Ignore jit & ipex
-                        if accelerator == "jit":
-                            raise ValueError(f"JIT {precision_short} quantization is not supported.")
-                        extra_args["channels_last"] = channels_last
-                    elif precision_short == "int8":
-                        raise
-
-                # unet
-                nano_unet = InferenceOptimizer.quantize(unet,
-                                                        accelerator=accelerator,
-                                                        precision=precision_short,
-                                                        input_sample=input_sample,
-                                                        **extra_args)
+            nano_unet = nano_optimize_model(unet, input_sample, input_names=unet_input_names, output_names=unet_output_names, 
+                                            dynamic_axes=unet_dynamic_axes, accelerator=accelerator, ipex=ipex, precision=precision, 
+                                            device=device, samples=samples, low_memory=low_memory, channels_last=channels_last)
 
             # Save model if cache=True
             if cache:
@@ -134,6 +72,88 @@ def optimize_unet(
 
         setattr(nano_unet, "conv_in", conv_in)
         return nano_unet
+
+def nano_optimize_model(
+    model, 
+    input_sample,
+    input_names=None,
+    output_names=None,
+    dynamic_axes=False,
+    accelerator="jit", 
+    ipex=True, 
+    precision='float32',
+    device='CPU',
+    samples=None, 
+    low_memory=False,
+    channels_last=False
+    ):
+
+    extra_args = {}
+    if precision == 'float32':
+        if accelerator == "jit":
+            weights_prepack = False if low_memory else None
+            extra_args["weights_prepack"] = weights_prepack
+            extra_args["use_ipex"] = ipex
+            extra_args["jit_strict"] = False
+            extra_args["enable_onednn"] = False
+            extra_args["channels_last"] = channels_last
+        elif accelerator is None:
+            if ipex:
+                extra_args["use_ipex"] = ipex
+                extra_args["channels_last"] = channels_last
+            else:
+                raise ValueError("IPEX should be True if accelerator is None and precision is float32.")
+        elif accelerator == "openvino":
+            extra_args["input_names"] = input_names
+            extra_args["output_names"] = output_names
+            # # Nano will deal with the GPU/VPU dynamic axes issue
+            extra_args["dynamic_axes"] = dynamic_axes
+            extra_args["device"] = device
+        else:
+            raise ValueError(f"The accelerator can be one of `None`, `jit`, and `openvino` if the precision is float32, but got {accelerator}")
+        optimized_model = InferenceOptimizer.trace(model,
+                                            accelerator=accelerator,
+                                            input_sample=input_sample,
+                                            **extra_args)
+    else:
+        precision_map = {
+            'bfloat16': 'bf16',
+            'int8': 'int8',
+            'float16': 'fp16'
+        }
+        precision_short = precision_map[precision]
+
+        # prepare input samples, calib dataloader and eval functions
+        if accelerator == "openvino":
+            extra_args["device"] = device
+            # extra_args["input_names"] = input_names
+            # extra_args["output_names"] = output_names
+            # Nano will deal with the GPU/VPU dynamic axes issue
+            # extra_args["dynamic_axes"] = dynamic_axes
+
+            if precision_short == "int8":
+                # TODO: openvino int8 here
+                raise ValueError("OpenVINO int8 quantization is not supported.")
+        elif accelerator == "onnxruntime":
+            raise ValueError(f"Onnxruntime {precision_short} quantization is not supported.")
+        else:
+            # PyTorch bf16
+            if precision_short == "bf16":
+                # Ignore jit & ipex
+                if accelerator == "jit":
+                    raise ValueError(f"JIT {precision_short} quantization is not supported.")
+                extra_args["channels_last"] = channels_last
+            elif precision_short == "int8":
+                raise
+
+        # unet
+        optimized_model = InferenceOptimizer.quantize(model,
+                                                accelerator=accelerator,
+                                                precision=precision_short,
+                                                input_sample=input_sample,
+                                                **extra_args)
+    return optimized_model
+
 
 
 def _get_cache_path(base_dir, accelerator="jit", ipex=True, precision='float32', low_memory=False, device='CPU'):
