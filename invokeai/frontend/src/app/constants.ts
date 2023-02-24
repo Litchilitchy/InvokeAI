@@ -30,6 +30,9 @@ export const DIFFUSERS_SAMPLERS: Array<string> = [
   'k_heun',
 ];
 
+// Valid Nano optimizations
+export const NANO_OPTIMS: Array<string> = ['None', 'OpenVINO', 'IPEX'];
+
 // Valid image widths
 export const WIDTHS: Array<number> = [
   64, 128, 192, 256, 320, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960,

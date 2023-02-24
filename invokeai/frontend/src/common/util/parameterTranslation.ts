@@ -39,6 +39,7 @@ export type BackendGenerationParameters = {
   height: number;
   width: number;
   sampler_name: string;
+  nano: string;
   seed: number;
   progress_images: boolean;
   progress_latents: boolean;
@@ -124,6 +125,7 @@ export const frontendToBackendParameters = (
     iterations,
     perlin,
     prompt,
+    nano,
     negativePrompt,
     sampler,
     seamBlur,
@@ -159,6 +161,7 @@ export const frontendToBackendParameters = (
     height,
     width,
     sampler_name: sampler,
+    nano,
     seed,
     progress_images: shouldDisplayInProgressType === 'full-res',
     progress_latents: shouldDisplayInProgressType === 'latents',
