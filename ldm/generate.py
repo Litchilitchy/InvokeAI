@@ -33,6 +33,7 @@ from ldm.invoke.generator.inpaint import infill_methods
 from ldm.invoke.globals import global_cache_dir, Globals
 from ldm.invoke.image_util import InitImageResizer
 from ldm.invoke.model_manager import ModelManager
+from ldm.invoke.optimize.nano_optimize import optimize_unet
 from ldm.invoke.pngwriter import PngWriter
 from ldm.invoke.seamless import configure_model_padding
 from ldm.invoke.txt2mask import Txt2Mask
@@ -177,6 +178,8 @@ class Generate:
         self.base_generator = None
         self.seed           = None
         self.outdir = outdir
+        self.nano = None
+        self.unet = None
         self.gfpgan = gfpgan
         self.codeformer = codeformer
         self.esrgan = esrgan
@@ -304,6 +307,7 @@ class Generate:
             perlin           = 0.0,
             karras_max       = None,
             outdir         = None,
+            nano             = None,
             # these are specific to img2img and inpaint
             init_img         = None,
             init_mask        = None,
@@ -376,6 +380,7 @@ class Generate:
            embiggen                        // scale factor relative to the size of the --init_img (-I), followed by ESRGAN upscaling strength (0-1.0), followed by minimum amount of overlap between tiles as a decimal ratio (0 - 1.0) or number of pixels
            embiggen_tiles                  // list of tiles by number in order to process and replace onto the image e.g. `0 2 4`
            embiggen_strength               // strength for embiggen. 0.0 preserves image exactly, 1.0 replaces it completely
+           nano                            // the nano optimization method. None, OpenVINO or IPEX
 
         To use the step callback, define a function that receives two arguments:
         - Image GPU data
@@ -404,6 +409,8 @@ class Generate:
         iterations = iterations or self.iterations
         strength = strength or self.strength
         outdir                = outdir     or self.outdir
+        nano = nano or self.nano
+        nano = None if nano == "None" else nano
         self.seed = seed
         self.log_tokenization = log_tokenization
         self.step_callback = step_callback
@@ -412,13 +419,14 @@ class Generate:
         with_variations = [] if with_variations is None else with_variations
 
         # will instantiate the model or return it from cache
-        model = self.set_model(self.model_name)
+        model = self.set_model(self.model_name, nano_optimization=nano)
 
         # self.width and self.height are set by set_model()
         # to the width and height of the image training set
         width = width or self.width
         height = height or self.height
 
+        # TODO: Nano
         if isinstance(model, DiffusionPipeline):
             configure_model_padding(model.unet, seamless, seamless_axes)
             configure_model_padding(model.vae, seamless, seamless_axes)
@@ -868,7 +876,7 @@ class Generate:
         '''
         return self.set_model(self.model_name)
 
-    def set_model(self,model_name):
+    def set_model(self,model_name, nano_optimization=None):
         """
         Given the name of a model defined in models.yaml, will load and initialize it
         and return the model object. Previously-used models will be cached.
@@ -878,8 +886,10 @@ class Generate:
         loaded model (if any). If that fallback fails, will raise an AssertionError
         """
         if self.model_name == model_name and self.model is not None:
+            self.set_nano_optim(nano_optimization=nano_optimization)
             return self.model
 
+        # TODO: nano change model
         previous_model_name = self.model_name
 
         # the model cache does the loading and offloading
@@ -925,9 +935,32 @@ class Generate:
                                                                                 defer_injecting_tokens=True)
             print(f'>> Textual inversions available: {", ".join(self.model.textual_inversion_manager.get_all_trigger_strings())}')
 
+        # Nano optimization
+        # Reset nano related params
+        self.unet = self.model.unet
+        self.nano = None
+        self.set_nano_optim(nano_optimization=nano_optimization)
+
         self.model_name = model_name
         self._set_sampler()  # requires self.model_name to be set first
         return self.model
+
+    def set_nano_optim(self, nano_optimization=None):
+        if nano_optimization != self.nano:
+            print(f"Switch Nano Optimization from {self.nano} to {nano_optimization}...")
+            if nano_optimization is None or nano_optimization == "None":
+                self.model.unet = self.unet
+                self.nano = None
+            else:
+                # optimize or load the existing optimized nano model
+                optim_args = {}
+                if nano_optimization == "OpenVINO":
+                    optim_args["accelerator"] = "openvino"
+                elif nano_optimization == "IPEX":
+                    optim_args["accelerator"] = "jit"
+                optimized_unet = optimize_unet(self.unet, cache=True, **optim_args)
+                self.model.unet = optimized_unet
+                self.nano = nano_optimization
 
     def load_huggingface_concepts(self, concepts:list[str]):
         self.model.textual_inversion_manager.load_huggingface_concepts(concepts)

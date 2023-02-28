@@ -642,7 +642,8 @@ class StableDiffusionGeneratorPipeline(StableDiffusionPipeline):
             run_id=None,
             noise_func=None,
             ) -> InvokeAIStableDiffusionPipelineOutput:
-        device = self._model_group.device_for(self.unet)
+        # device = self._model_group.device_for(self.unet)
+        device = torch.device("cpu")
         latents_dtype = self.unet.dtype
 
         if isinstance(init_image, PIL.Image.Image):

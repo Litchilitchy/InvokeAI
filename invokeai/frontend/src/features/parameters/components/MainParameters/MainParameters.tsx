@@ -4,6 +4,7 @@ import MainIterations from './MainIterations';
 import MainSampler from './MainSampler';
 import MainSteps from './MainSteps';
 import MainWidth from './MainWidth';
+import MainNano from './MainNano';
 
 export const inputWidth = 'auto';
 
@@ -20,6 +21,9 @@ export default function MainSettings() {
           <MainWidth />
           <MainHeight />
           <MainSampler />
+        </div>
+        <div className="main-settings-row">
+          <MainNano />
         </div>
       </div>
     </div>

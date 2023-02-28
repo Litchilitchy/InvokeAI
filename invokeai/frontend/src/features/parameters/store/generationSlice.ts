@@ -32,6 +32,7 @@ export interface GenerationState {
   tileSize: number;
   variationAmount: number;
   width: number;
+  nano: string;
 }
 
 const initialGenerationState: GenerationState = {
@@ -60,6 +61,7 @@ const initialGenerationState: GenerationState = {
   tileSize: 32,
   variationAmount: 0.1,
   width: 512,
+  nano: 'None',
 };
 
 const initialState: GenerationState = initialGenerationState;
@@ -110,6 +112,9 @@ export const generationSlice = createSlice({
     },
     setSampler: (state, action: PayloadAction<string>) => {
       state.sampler = action.payload;
+    },
+    setNano: (state, action: PayloadAction<string>) => {
+      state.nano = action.payload;
     },
     setSeed: (state, action: PayloadAction<number>) => {
       state.seed = action.payload;
@@ -362,6 +367,7 @@ export const {
   setTileSize,
   setVariationAmount,
   setWidth,
+  setNano,
 } = generationSlice.actions;
 
 export default generationSlice.reducer;

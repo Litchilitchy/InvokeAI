@@ -517,11 +517,6 @@ class ModelManager(object):
                     **pipeline_args,
                     **fp_args,
                 )
-                conv_in = OrderedDict()
-                conv_in.in_channels = pipeline.unet.conv_in.in_channels
-                from bigdl.nano.pytorch import InferenceOptimizer
-                pipeline.unet = InferenceOptimizer.load("/home/yina/Documents/ldm/client-stable-diffusion/model_1.4/unet/float32_jit_ipex", pipeline.unet)
-                setattr(pipeline.unet, "conv_in", conv_in)
             except OSError as e:
                 if str(e).startswith("fp16 is not a valid"):
                     pass
